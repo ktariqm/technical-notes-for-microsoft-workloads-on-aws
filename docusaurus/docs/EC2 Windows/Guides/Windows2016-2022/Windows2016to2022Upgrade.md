@@ -514,7 +514,7 @@ $ExecId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 
 ## Automation Steps
 
-See the [Automation Flowchart](AutomationFlowchart) for a visual diagram of all execution paths (happy path, rollback, and failure cleanup).
+See the [Automation Flowchart](./flowchart) for a visual diagram of all execution paths (happy path, rollback, and failure cleanup).
 
 ### Temporary Upgrade Profile (IAM)
 
