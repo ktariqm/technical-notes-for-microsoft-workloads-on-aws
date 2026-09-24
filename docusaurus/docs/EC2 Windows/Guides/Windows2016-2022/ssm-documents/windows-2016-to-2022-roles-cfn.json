@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "Windows 2016-to-2022 Upgrade - IAM roles + instance profile ONLY. SSM documents are deployed separately via 'aws ssm create-document' (the automation document exceeds CloudFormation's inline 64 KiB SSM Content limit when embedded). Delete this stack + the two SSM documents to clean up.",
+  "Description": "Windows 2016-to-2022 Upgrade - IAM roles + instance profile ONLY. SSM documents are deployed separately via 'aws ssm create-document' (the automation document exceeds CloudFormation's inline 64 KiB SSM Content limit when embedded). IAM permissions are scoped to account/region ARNs; instance state-change actions (Stop/Start/Reboot/ReplaceRootVolume) additionally require the target instance to carry the tag WindowsUpgrade=true. Delete this stack + the two SSM documents to clean up.",
   "Resources": {
     "WindowsUpgradeAutomationRole": {
       "Type": "AWS::IAM::Role",
@@ -25,54 +25,129 @@
               "Version": "2012-10-17",
               "Statement": [
                 {
-                  "Sid": "EC2Actions",
+                  "Sid": "EC2ReadOnly",
                   "Effect": "Allow",
                   "Action": [
                     "ec2:DescribeInstances",
                     "ec2:DescribeInstanceStatus",
                     "ec2:DescribeInstanceAttribute",
                     "ec2:DescribeInstanceTypes",
-                    "ec2:StopInstances",
-                    "ec2:StartInstances",
-                    "ec2:RebootInstances",
-                    "ec2:CreateImage",
                     "ec2:DescribeImages",
-                    "ec2:CreateVolume",
-                    "ec2:AttachVolume",
-                    "ec2:DetachVolume",
-                    "ec2:DeleteVolume",
                     "ec2:DescribeVolumes",
-                    "ec2:ModifyVolume",
                     "ec2:DescribeVolumesModifications",
                     "ec2:DescribeSnapshots",
-                    "ec2:CreateTags",
                     "ec2:DescribeTags",
                     "ec2:DescribeAddresses",
-                    "ec2:CreateReplaceRootVolumeTask",
                     "ec2:DescribeReplaceRootVolumeTasks",
-                    "ec2:EnableImageDeprecation",
+                    "ec2:DescribeIamInstanceProfileAssociations",
                     "autoscaling:DescribeAutoScalingInstances"
                   ],
                   "Resource": "*"
                 },
                 {
-                  "Sid": "SSMActions",
+                  "Sid": "EC2InstanceStateChanges",
                   "Effect": "Allow",
                   "Action": [
-                    "ssm:SendCommand",
+                    "ec2:StopInstances",
+                    "ec2:StartInstances",
+                    "ec2:RebootInstances",
+                    "ec2:CreateReplaceRootVolumeTask"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:aws:ec2:*:${AWS::AccountId}:instance/*"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "aws:ResourceTag/WindowsUpgrade": "true"
+                    }
+                  }
+                },
+                {
+                  "Sid": "EC2VolumeAndImageActions",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:CreateVolume",
+                    "ec2:AttachVolume",
+                    "ec2:DetachVolume",
+                    "ec2:DeleteVolume",
+                    "ec2:ModifyVolume",
+                    "ec2:CreateImage",
+                    "ec2:EnableImageDeprecation"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:ec2:*:${AWS::AccountId}:volume/*"
+                    },
+                    {
+                      "Fn::Sub": "arn:aws:ec2:*:${AWS::AccountId}:instance/*"
+                    },
+                    {
+                      "Fn::Sub": "arn:aws:ec2:*:${AWS::AccountId}:image/*"
+                    },
+                    {
+                      "Fn::Sub": "arn:aws:ec2:*:${AWS::AccountId}:snapshot/*"
+                    }
+                  ]
+                },
+                {
+                  "Sid": "EC2CreateTags",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:CreateTags"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:aws:ec2:*:${AWS::AccountId}:*"
+                  }
+                },
+                {
+                  "Sid": "SSMReadOnly",
+                  "Effect": "Allow",
+                  "Action": [
                     "ssm:GetCommandInvocation",
                     "ssm:DescribeInstanceInformation",
                     "ssm:GetDocument",
                     "ssm:ListCommands",
                     "ssm:ListCommandInvocations",
-                    "ssm:StartAutomationExecution",
                     "ssm:GetAutomationExecution",
                     "ssm:DescribeAutomationExecutions"
                   ],
                   "Resource": "*"
                 },
                 {
-                  "Sid": "IAMActions",
+                  "Sid": "SSMSendCommand",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssm:SendCommand"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:ec2:*:${AWS::AccountId}:instance/*"
+                    },
+                    {
+                      "Fn::Sub": "arn:aws:ssm:*:${AWS::AccountId}:document/*"
+                    },
+                    {
+                      "Fn::Sub": "arn:aws:ssm:*::document/AWS-*"
+                    }
+                  ]
+                },
+                {
+                  "Sid": "SSMStartAutomation",
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssm:StartAutomationExecution"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:aws:ssm:*:${AWS::AccountId}:automation-definition/*"
+                    },
+                    {
+                      "Fn::Sub": "arn:aws:ssm:*::automation-definition/AWS-*"
+                    }
+                  ]
+                },
+                {
+                  "Sid": "IAMReadOnly",
                   "Effect": "Allow",
                   "Action": [
                     "iam:GetInstanceProfile",
@@ -81,12 +156,20 @@
                     "iam:ListRolePolicies",
                     "iam:GetRolePolicy",
                     "iam:GetPolicy",
-                    "iam:GetPolicyVersion",
-                    "ec2:DescribeIamInstanceProfileAssociations",
+                    "iam:GetPolicyVersion"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "EC2InstanceProfileAssociation",
+                  "Effect": "Allow",
+                  "Action": [
                     "ec2:AssociateIamInstanceProfile",
                     "ec2:DisassociateIamInstanceProfile"
                   ],
-                  "Resource": "*"
+                  "Resource": {
+                    "Fn::Sub": "arn:aws:ec2:*:${AWS::AccountId}:instance/*"
+                  }
                 },
                 {
                   "Sid": "PassRole",
@@ -105,7 +188,9 @@
                   "Sid": "SNSNotification",
                   "Effect": "Allow",
                   "Action": "sns:Publish",
-                  "Resource": "*"
+                  "Resource": {
+                    "Fn::Sub": "arn:aws:sns:*:${AWS::AccountId}:*"
+                  }
                 }
               ]
             }

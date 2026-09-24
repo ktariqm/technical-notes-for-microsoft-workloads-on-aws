@@ -49,6 +49,7 @@ Source: [Plan your Windows Server upgrade](https://learn.microsoft.com/en-us/win
 - Outbound internet (HTTPS 443) to the Microsoft Update Catalog CDN if cumulative-update patching is enabled (the default). The pinned CUs download directly from Microsoft; SSM VPC endpoints alone are not sufficient. If the instance has no internet egress, set `InstallCumulativeUpdates=false` and apply patches with your own process.
 - No minimum patch level required on the source Windows Server 2016 for media-based in-place upgrade. The automation uses installation media (setup.exe), not Windows Update feature update, so no prerequisite CU is needed on the source OS.
 - C: drive must be the last partition if disk expansion is needed
+- **Tag the target instance `WindowsUpgrade=true`.** The automation role's instance state-change permissions (stop, start, reboot, replace root volume) are scoped by this tag, so an untagged instance is denied those actions. Apply the tag before starting: `aws ec2 create-tags --resources <instance-id> --tags Key=WindowsUpgrade,Value=true --no-cli-pager`
 
 ## Application Availability During the Upgrade
 
