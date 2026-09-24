@@ -1,5 +1,7 @@
 # Windows Server 2016 to 2022 Upgrade Guide
 
+> **Note:** This is sample code, for non-production usage. You should work with your security and legal teams to meet your organizational security, regulatory and compliance requirements before deployment.
+
 ## Overview
 
 This automation uses SSM to orchestrate an in-place upgrade from Windows Server 2016 to 2022 directly on the existing EC2 instance.
