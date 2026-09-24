@@ -448,8 +448,8 @@ You can also run it from the web console instead of CloudShell:
 | BackupRetentionDays | 30 | Days to retain backup AMI |
 | WaitForBackupAMI | false | Wait for AMI to complete before proceeding |
 | InstallCumulativeUpdates | true | Install pinned OS + .NET CUs after upgrade; false skips patching |
-| PinnedCumulativeUpdateUrl | June 2026 KB5094128 | Catalog .msu URL of the OS cumulative update (SSU+LCU) |
-| PinnedDotNetUpdateUrl | KB5087065 | Catalog .msu URL of the .NET Framework CU |
+| PinnedCumulativeUpdateUrl | Sept 2026 KB5122882 | Catalog .msu URL of the OS cumulative update (SSU+LCU) |
+| PinnedDotNetUpdateUrl | KB5126050 | Catalog .msu URL of the .NET Framework CU |
 | UpgradeInstanceProfileName | WindowsUpgradeInstanceProfile | Instance profile to attach if the instance has no instance profile (removed afterward) |
 | NotificationTopicArn | "" | SNS topic for completion notification |
 
@@ -562,7 +562,7 @@ Patching is best-effort and non-fatal. The mission is the 2016→2022 upgrade (2
 
 The box lands at the pinned patch level (a known floor), not necessarily absolute-latest. That's intentional: your normal patch process (Patch Manager, WSUS, etc.) brings it fully current afterward. Two supported modes:
 
-- **Default** (`InstallCumulativeUpdates=true`): installs the pinned June 2026 OS CU (KB5094128) + .NET CU (KB5087065), then your process trues up.
+- **Default** (`InstallCumulativeUpdates=true`): installs the pinned Sept 2026 OS CU (KB5122882) + .NET CU (KB5126050), then your process trues up.
 - **Skip** (`InstallCumulativeUpdates=false`): no patching for a faster run; your process handles everything.
 
 Either way the box is not silently left thinking it's patched at 2022 media-baseline levels.
