@@ -170,7 +170,7 @@ Skip to [Run PreCheck or Start Upgrade](#run-precheck-or-start-upgrade) once the
 
 ### Option B: Manual Setup
 
-### 1. Create IAM Roles
+#### 1. Create IAM Roles
 
 The automation requires two IAM roles:
 
@@ -406,7 +406,7 @@ Add-IAMRoleToInstanceProfile `
     -RoleName 'WindowsUpgradeInstanceRole'
 ```
 
-### 2. Deploy SSM Automation Documents
+#### 2. Deploy SSM Automation Documents
 
 Download the SSM documents:
 
@@ -518,17 +518,6 @@ aws ssm describe-automation-executions \
     --output table
 ```
 
-**View step-by-step progress (AWS CLI):**
-
-Uses `$EXEC_ID` from the start command above:
-
-```bash
-aws ssm get-automation-execution \
-    --automation-execution-id "$EXEC_ID" \
-    --query "AutomationExecution.StepExecutions[?StepStatus!='Pending'].{Step:StepName,Status:StepStatus}" \
-    --output table
-```
-
 **PowerShell (Windows):**
 
 ```powershell
@@ -552,6 +541,17 @@ Get-SSMAutomationExecutionList -Filter @{
 ```
 
 ### View Step-by-Step Progress
+
+**AWS CLI (macOS/Linux/CloudShell):**
+
+Uses `$EXEC_ID` from the start command above:
+
+```bash
+aws ssm get-automation-execution \
+    --automation-execution-id "$EXEC_ID" \
+    --query "AutomationExecution.StepExecutions[?StepStatus!='Pending'].{Step:StepName,Status:StepStatus}" \
+    --output table
+```
 
 **PowerShell (Windows):**
 
