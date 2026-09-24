@@ -64,6 +64,60 @@ Chinese (Traditional), Czech, Dutch, English, French, German, Hungarian, Italian
 
 ## Quick Setup
 
+### Option A: CloudFormation for roles + direct deploy for documents (Recommended)
+
+**Architecture note:** The IAM roles are deployed via a small CloudFormation stack; the two SSM documents are deployed directly with `aws ssm create-document`. Do NOT embed the SSM documents inside the CloudFormation template. The upgrade document exceeds CloudFormation's inline SSM `Content` limit (64 KiB) once CloudFormation re-serializes the embedded object, so a combined template fails to create with `Invalid request provided: 64 KiB`. The split below is the supported path.
+
+**Step 1: Deploy the IAM roles stack** (`windows-2016-to-2022-roles-cfn.json` is ~5.5 KB, well under the 51,200-byte inline template limit, so no S3 staging is needed):
+
+```bash
+aws cloudformation create-stack \
+    --stack-name Windows2016to2022Upgrade \
+    --template-body file://windows-2016-to-2022-roles-cfn.json \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --no-cli-pager
+
+aws cloudformation wait stack-create-complete \
+    --stack-name Windows2016to2022Upgrade --no-cli-pager
+
+ROLE_ARN=$(aws cloudformation describe-stacks \
+    --stack-name Windows2016to2022Upgrade \
+    --query 'Stacks[0].Outputs[?OutputKey==`AutomationRoleArn`].OutputValue' \
+    --output text --no-cli-pager)
+
+echo "Automation Role ARN: $ROLE_ARN"
+```
+
+**Step 2: Deploy the two SSM documents directly** (exact minified bytes, each under the 64 KiB SSM limit). The document name is case-sensitive:
+
+```bash
+aws ssm create-document \
+    --name 'Windows-2016-to-2022-PreCheck' \
+    --document-type 'Automation' --document-format 'JSON' \
+    --content file://windows-2016-to-2022-precheck.json \
+    --no-cli-pager
+
+aws ssm create-document \
+    --name 'Windows-2016-to-2022-Upgrade' \
+    --document-type 'Automation' --document-format 'JSON' \
+    --content file://Windows-2016-to-2022-Upgrade.json \
+    --no-cli-pager
+```
+
+**Cleanup after all upgrades are complete** (remove documents first, then the roles stack):
+
+```bash
+aws ssm delete-document --name 'Windows-2016-to-2022-Upgrade' --no-cli-pager
+aws ssm delete-document --name 'Windows-2016-to-2022-PreCheck' --no-cli-pager
+aws cloudformation delete-stack --stack-name Windows2016to2022Upgrade --no-cli-pager
+```
+
+> **Updating a document later:** `aws ssm update-document --name '<name>' --document-version '$LATEST' --content file://<file>` creates a new version. If you keep the documents in CloudFormation instead, every `AWS::SSM::Document` with a custom `Name` must set `"UpdateMethod": "NewVersion"`, or stack updates fail with "cannot update a stack when a custom-named resource requires replacing".
+
+Skip to [Run PreCheck or Start Upgrade](#run-precheck-or-start-upgrade) once the roles stack and both documents are deployed.
+
+### Option B: Manual Setup
+
 ### 1. Create IAM Roles
 
 The automation requires two IAM roles:
@@ -90,10 +144,77 @@ aws iam create-role \
         }]
     }' --no-cli-pager
 
-# Attach permissions (scoped policy for production; AdministratorAccess for testing only)
-aws iam attach-role-policy \
+# Create and attach the scoped policy
+cat > /tmp/windows-upgrade-policy.json << 'POLICY'
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "EC2Actions",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeInstances", "ec2:DescribeInstanceStatus",
+                "ec2:DescribeInstanceAttribute", "ec2:DescribeInstanceTypes",
+                "ec2:StopInstances", "ec2:StartInstances", "ec2:RebootInstances",
+                "ec2:CreateImage", "ec2:DescribeImages",
+                "ec2:CreateVolume", "ec2:AttachVolume", "ec2:DetachVolume",
+                "ec2:DeleteVolume", "ec2:DescribeVolumes",
+                "ec2:ModifyVolume", "ec2:DescribeVolumesModifications",
+                "ec2:DescribeSnapshots", "ec2:CreateTags", "ec2:DescribeTags",
+                "ec2:DescribeAddresses",
+                "ec2:CreateReplaceRootVolumeTask", "ec2:DescribeReplaceRootVolumeTasks",
+                "ec2:EnableImageDeprecation",
+                "ec2:DescribeIamInstanceProfileAssociations",
+                "ec2:AssociateIamInstanceProfile", "ec2:DisassociateIamInstanceProfile",
+                "autoscaling:DescribeAutoScalingInstances"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "SSMActions",
+            "Effect": "Allow",
+            "Action": [
+                "ssm:SendCommand", "ssm:GetCommandInvocation",
+                "ssm:DescribeInstanceInformation", "ssm:GetDocument",
+                "ssm:ListCommands", "ssm:ListCommandInvocations",
+                "ssm:StartAutomationExecution", "ssm:GetAutomationExecution",
+                "ssm:DescribeAutomationExecutions"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "IAMActions",
+            "Effect": "Allow",
+            "Action": [
+                "iam:GetInstanceProfile", "iam:ListInstanceProfiles",
+                "iam:ListAttachedRolePolicies", "iam:ListRolePolicies",
+                "iam:GetRolePolicy", "iam:GetPolicy", "iam:GetPolicyVersion"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "PassRole",
+            "Effect": "Allow",
+            "Action": "iam:PassRole",
+            "Resource": [
+                "arn:aws:iam::*:role/WindowsUpgradeInstanceRole",
+                "arn:aws:iam::*:role/WindowsUpgradeAutomationRole"
+            ]
+        },
+        {
+            "Sid": "SNSNotification",
+            "Effect": "Allow",
+            "Action": "sns:Publish",
+            "Resource": "*"
+        }
+    ]
+}
+POLICY
+
+aws iam put-role-policy \
     --role-name WindowsUpgradeAutomationRole \
-    --policy-arn arn:aws:iam::aws:policy/AdministratorAccess \
+    --policy-name WindowsUpgradeAutomationPolicy \
+    --policy-document file:///tmp/windows-upgrade-policy.json \
     --no-cli-pager
 
 # --- 2. Instance Role (temporary SSM access) ---
@@ -138,9 +259,76 @@ New-IAMRole `
         }]
     }'
 
-Register-IAMRolePolicy `
+$policy = @'
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "EC2Actions",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeInstances", "ec2:DescribeInstanceStatus",
+                "ec2:DescribeInstanceAttribute", "ec2:DescribeInstanceTypes",
+                "ec2:StopInstances", "ec2:StartInstances", "ec2:RebootInstances",
+                "ec2:CreateImage", "ec2:DescribeImages",
+                "ec2:CreateVolume", "ec2:AttachVolume", "ec2:DetachVolume",
+                "ec2:DeleteVolume", "ec2:DescribeVolumes",
+                "ec2:ModifyVolume", "ec2:DescribeVolumesModifications",
+                "ec2:DescribeSnapshots", "ec2:CreateTags", "ec2:DescribeTags",
+                "ec2:DescribeAddresses",
+                "ec2:CreateReplaceRootVolumeTask", "ec2:DescribeReplaceRootVolumeTasks",
+                "ec2:EnableImageDeprecation",
+                "ec2:DescribeIamInstanceProfileAssociations",
+                "ec2:AssociateIamInstanceProfile", "ec2:DisassociateIamInstanceProfile",
+                "autoscaling:DescribeAutoScalingInstances"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "SSMActions",
+            "Effect": "Allow",
+            "Action": [
+                "ssm:SendCommand", "ssm:GetCommandInvocation",
+                "ssm:DescribeInstanceInformation", "ssm:GetDocument",
+                "ssm:ListCommands", "ssm:ListCommandInvocations",
+                "ssm:StartAutomationExecution", "ssm:GetAutomationExecution",
+                "ssm:DescribeAutomationExecutions"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "IAMActions",
+            "Effect": "Allow",
+            "Action": [
+                "iam:GetInstanceProfile", "iam:ListInstanceProfiles",
+                "iam:ListAttachedRolePolicies", "iam:ListRolePolicies",
+                "iam:GetRolePolicy", "iam:GetPolicy", "iam:GetPolicyVersion"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "PassRole",
+            "Effect": "Allow",
+            "Action": "iam:PassRole",
+            "Resource": [
+                "arn:aws:iam::*:role/WindowsUpgradeInstanceRole",
+                "arn:aws:iam::*:role/WindowsUpgradeAutomationRole"
+            ]
+        },
+        {
+            "Sid": "SNSNotification",
+            "Effect": "Allow",
+            "Action": "sns:Publish",
+            "Resource": "*"
+        }
+    ]
+}
+'@
+
+Write-IAMRolePolicy `
     -RoleName 'WindowsUpgradeAutomationRole' `
-    -PolicyArn 'arn:aws:iam::aws:policy/AdministratorAccess'
+    -PolicyName 'WindowsUpgradeAutomationPolicy' `
+    -PolicyDocument $policy
 
 # --- 2. Instance Role (temporary SSM access) ---
 New-IAMRole `
@@ -166,8 +354,6 @@ Add-IAMRoleToInstanceProfile `
     -RoleName 'WindowsUpgradeInstanceRole'
 ```
 
-> **Note:** For production, replace `AdministratorAccess` on the automation role with a scoped policy covering only: EC2 (instances, volumes, images, snapshots, tags), SSM (commands, automation), IAM (instance profiles, PassRole), and SNS (Publish). The [IAM Roles Setup](IAMRolesSetup) page has the full least-privilege policy document.
-
 ### 2. Deploy SSM Automation Documents
 
 Download the SSM documents:
@@ -178,6 +364,8 @@ Download the SSM documents:
 Upload to CloudShell and run:
 
 **AWS CLI (Mac/Linux):**
+
+> **Important:** The document name is case-sensitive. The upgrade automation references `Windows-2016-to-2022-PreCheck` (capital P, capital C). Make sure the `--name` parameter matches exactly.
 
 ```bash
 aws ssm create-document \
@@ -352,16 +540,17 @@ Runs the PreCheck document and reports results. Never modifies the instance. If 
  8. **FindWindows2022Snapshot** — Detect OS language, find matching AWS installation media snapshot
  9. **CreateUpgradeVolume** — Create GP3 volume from snapshot (initializes during driver installs)
 10. **Install drivers** — Update ENA, PV, NVMe drivers
-11. **AttachUpgradeVolume** — Find available device (/dev/sdf-sdp) and attach volume
-12. **InitializeAndMountVolume** — Bring disk online, assign drive letter, mount ISO if needed, verify setup.exe
-13. **PerformUpgrade** — Run `setup.exe /auto upgrade /dynamicupdate disable`
-14. **Verification loop** — 4 cycles (15 min initial wait + 8 min intervals): wait for SSM online, verify OS is 2022 (build 20348.x)
-15. **CleanupUpgradeVolume** — Detach and delete upgrade EBS volume
-16. **InstallPinnedUpdates** — Download the pinned OS CU (SSU+LCU) and .NET CU .msus, extract, and install via DISM (SSU first, then LCUs); single reboot finalizes all three. Skipped if `InstallCumulativeUpdates=false`. Best-effort: patch failures do not fail the run (the OS upgrade already succeeded).
-17. **VerifyPatchLevel** — Poll until the pinned OS CU shows installed (Get-HotFix); activity-aware: waits only while servicing is active (RebootPending / TiWorker), fails fast if it settles without the CU; also confirms the .NET CU. Best-effort (does not abort the run).
-18. **RemoveRecoveryPartition** — Delete recovery partition created by upgrade, extend C: to reclaim space
-19. **RemoveTempProfile** — Remove the temporary WindowsUpgradeInstanceProfile if the automation attached one (no-op if the instance already had its own instance profile)
-20. **SendSuccessNotification** — Publish to SNS topic (if NotificationTopicArn provided)
+11. **MigrateToEC2Launchv2** — Install or update EC2Launch v2 (AWSEC2Launch-Agent) via AWS-ConfigureAWSPackage. EC2Launch v2 supports Server 2016+, so installing it before the upgrade ensures the agent is already in place when the OS transitions to 2022. Best-effort: failure does not abort the run.
+12. **AttachUpgradeVolume** — Find available device (/dev/sdf-sdp) and attach volume
+13. **InitializeAndMountVolume** — Bring disk online, assign drive letter, mount ISO if needed, verify setup.exe
+14. **PerformUpgrade** — Run `setup.exe /auto upgrade /dynamicupdate disable`
+15. **Verification chain (InitialUpgradeWait + VerifyUpgrade1–8 + Sleep1–7)** — A multi-step verification chain giving a ~90-minute window. `InitialUpgradeWait` is an `aws:sleep` of PT10M, then up to 8 `VerifyUpgrade` steps each poll for SSM agent online + OS reporting Windows Server 2022 with IMAGE_STATE_COMPLETE, separated by `aws:sleep` PT10M cycles. **Why a chain and not one step:** `aws:executeScript` has a hard 600-second (10-minute) handler cap that overrides the step's `timeoutSeconds`, so a single long-polling step is killed at 10 minutes while the OS is still mid-upgrade. The long waits therefore use `aws:sleep` (no cap) and each verify step stays under its 480s timeout. Cycles 1–7 branch: UPGRADE_COMPLETE → CleanupUpgradeVolume, otherwise → next Sleep. Cycle 8 is the final gate: it raises on still-incomplete → AutoRollback. Any cycle detecting IMAGE_STATE_UNDEPLOYABLE raises immediately → AutoRollback.
+16. **CleanupUpgradeVolume** — Detach and delete upgrade EBS volume
+17. **InstallPinnedUpdates** — Download the pinned OS CU (SSU+LCU) and .NET CU .msus, extract, and install via DISM (SSU first, then LCUs); single reboot finalizes all three. Skipped if `InstallCumulativeUpdates=false`. Best-effort: patch failures do not fail the run (the OS upgrade already succeeded).
+18. **VerifyPatchLevel** — Poll until the pinned OS CU shows installed (Get-HotFix); activity-aware: waits only while servicing is active (RebootPending / TiWorker), fails fast if it settles without the CU; also confirms the .NET CU. Best-effort (does not abort the run).
+19. **RemoveRecoveryPartition** — Delete recovery partition created by upgrade, extend C: to reclaim space
+20. **RemoveTempProfile** — Remove the temporary WindowsUpgradeInstanceProfile if the automation attached one (no-op if the instance already had its own instance profile)
+21. **SendSuccessNotification** — Publish to SNS topic (if NotificationTopicArn provided)
 
 Defender platform and definition updates self-update independently, so they are not installed here. Customers who skip patching (`InstallCumulativeUpdates=false`) or want absolute-latest should run their own patch process after the upgrade.
 
@@ -477,6 +666,16 @@ C3, C4, D2, I2, M4 (except m4.16xlarge), R3 with SR-IOV are not supported. Migra
 ### Upgrade times out
 
 Check SSM Automation execution details for step outputs. Check Windows Setup logs on instance: `C:\$WINDOWS.~BT\Sources\Panther\`
+
+If a verify step fails with `TimeoutError: Function handler_with_timeout timed out after 600.0 seconds`, that is the hard `aws:executeScript` handler cap, not the upgrade itself. Do not raise the step's `timeoutSeconds` (it is ignored above 600s). Keep each verify step short (≤480s) and use `aws:sleep` for the long inter-cycle waits; the shipped document already does this across the 8-cycle chain.
+
+### PreCheck or verify sub-automation times out on t2 instances
+
+On burstable t2 instances, repeated upgrade/rollback cycles can exhaust CPU credits, throttling the box to baseline so SSM commands run slowly enough to time out the PreCheck (or a verify) sub-automation, even though the checks themselves pass. Standard t2 credits reset on stop/start, so stopping and starting the instance restores a fresh credit balance and clears the timeout. For a clean test record, prefer launching a fresh instance rather than reusing one that has been through prior upgrade/rollback churn.
+
+### Deploy fails with "Invalid request provided: 64 KiB"
+
+SSM automation documents have a hard 64 KiB content limit. Deploy the documents directly with `aws ssm create-document --content file://...` from the minified JSON (do not embed them in a CloudFormation template — CloudFormation re-serializes the inline `Content` object with indentation, pushing it back over 64 KiB even if your file is minified). See Quick Setup Option A.
 
 ### Disk expansion fails
 
