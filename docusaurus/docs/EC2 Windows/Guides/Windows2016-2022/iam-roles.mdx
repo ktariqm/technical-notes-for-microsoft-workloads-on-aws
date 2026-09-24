@@ -41,7 +41,7 @@ aws cloudformation describe-stacks \
 **PowerShell (Windows):**
 
 ```powershell
-cd path\to\Windows2016-2022\ssm-documents\
+cd path\to\Windows2016-2022\ssm-documents
 
 aws cloudformation create-stack `
     --stack-name Windows2016to2022Upgrade `
@@ -342,7 +342,9 @@ Add-IAMRoleToInstanceProfile `
 ```
 
 :::note Deploy the SSM documents separately
-Whichever role option you choose, deploy the two SSM documents directly — they are **not** part of the CloudFormation template:
+Whichever role option you choose, deploy the two SSM documents directly — they are **not** part of the CloudFormation template.
+
+**AWS CLI (macOS/Linux/CloudShell):**
 
 ```bash
 aws ssm create-document \
@@ -353,6 +355,20 @@ aws ssm create-document \
 aws ssm create-document \
     --name 'Windows-2016-to-2022-Upgrade' \
     --document-type 'Automation' --document-format 'JSON' \
+    --content file://Windows-2016-to-2022-Upgrade.json --no-cli-pager
+```
+
+**PowerShell (Windows):**
+
+```powershell
+aws ssm create-document `
+    --name 'Windows-2016-to-2022-PreCheck' `
+    --document-type 'Automation' --document-format 'JSON' `
+    --content file://windows-2016-to-2022-precheck.json --no-cli-pager
+
+aws ssm create-document `
+    --name 'Windows-2016-to-2022-Upgrade' `
+    --document-type 'Automation' --document-format 'JSON' `
     --content file://Windows-2016-to-2022-Upgrade.json --no-cli-pager
 ```
 
