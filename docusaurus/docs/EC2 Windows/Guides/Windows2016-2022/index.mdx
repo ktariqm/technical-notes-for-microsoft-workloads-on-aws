@@ -39,7 +39,7 @@ The **preferred approach** for OS upgrades is to build new servers and redeploy 
 |------|-------------|
 | [Windows-2016-to-2022-Upgrade.json](https://github.com/aws-samples/technical-notes-for-microsoft-workloads-on-aws/blob/main/docusaurus/docs/EC2%20Windows/Guides/Windows2016-2022/ssm-documents/Windows-2016-to-2022-Upgrade.json) | Main SSM Automation document — performs the full upgrade (76 steps, 8-cycle verify chain) |
 | [windows-2016-to-2022-precheck.json](https://github.com/aws-samples/technical-notes-for-microsoft-workloads-on-aws/blob/main/docusaurus/docs/EC2%20Windows/Guides/Windows2016-2022/ssm-documents/windows-2016-to-2022-precheck.json) | Pre-flight check document — validates readiness without making changes |
-| [windows-2016-to-2022-roles-cfn.json](https://github.com/aws-samples/technical-notes-for-microsoft-workloads-on-aws/blob/main/docusaurus/docs/EC2%20Windows/Guides/Windows2016-2022/ssm-documents/windows-2016-to-2022-roles-cfn.json) | CloudFormation template — deploys the two IAM roles + instance profile (~5.5 KB) |
+| [windows-2016-to-2022-roles-cfn.json](https://github.com/aws-samples/technical-notes-for-microsoft-workloads-on-aws/blob/main/docusaurus/docs/EC2%20Windows/Guides/Windows2016-2022/ssm-documents/windows-2016-to-2022-roles-cfn.json) | CloudFormation template — deploys the two IAM roles + instance profile |
 | [IAM Roles](./iam-roles) | IAM role and policy setup instructions |
 | [Automation Flowchart](./flowchart) | Visual diagram of all execution paths |
 
@@ -58,7 +58,7 @@ The **preferred approach** for OS upgrades is to build new servers and redeploy 
 4. **Start the upgrade** (`DryRun=false`)
 
 :::note Split deployment
-The IAM roles deploy via a small CloudFormation stack, but the SSM documents are deployed **directly** with `aws ssm create-document`. Do not embed the SSM documents in CloudFormation: the upgrade document exceeds CloudFormation's inline 64 KiB SSM `Content` limit once CloudFormation re-serializes the object, and stack creation fails with `Invalid request provided: 64 KiB`.
+The IAM roles deploy via CloudFormation, but the SSM documents are deployed **directly** with `aws ssm create-document`. The documents cannot be embedded in CloudFormation: it re-serializes the inline document content, which pushes the upgrade document past the 64 KiB SSM document limit and fails with `Invalid request provided: 64 KiB`.
 :::
 
 👉 **[Full guide →](./Windows2016to2022Upgrade)**

@@ -68,9 +68,9 @@ Chinese (Traditional), Czech, Dutch, English, French, German, Hungarian, Italian
 
 ### Option A: CloudFormation for roles + direct deploy for documents (Recommended)
 
-**Architecture note:** The IAM roles are deployed via a small CloudFormation stack; the two SSM documents are deployed directly with `aws ssm create-document`. Do NOT embed the SSM documents inside the CloudFormation template. The upgrade document exceeds CloudFormation's inline SSM `Content` limit (64 KiB) once CloudFormation re-serializes the embedded object, so a combined template fails to create with `Invalid request provided: 64 KiB`. The split below is the supported path.
+**Architecture note:** Deploy the IAM roles with the CloudFormation template, then deploy the two SSM documents directly with `aws ssm create-document`. The documents cannot be embedded in the CloudFormation template: CloudFormation re-serializes the inline document content, which pushes the upgrade document past the 64 KiB SSM document limit and fails with `Invalid request provided: 64 KiB`.
 
-**Step 1: Deploy the IAM roles stack** (`windows-2016-to-2022-roles-cfn.json` is ~5.5 KB, well under the 51,200-byte inline template limit, so no S3 staging is needed):
+**Step 1: Deploy the IAM roles stack.** The template is small, so it deploys inline with `--template-body` (no S3 staging needed):
 
 ```bash
 aws cloudformation create-stack \
@@ -90,7 +90,7 @@ ROLE_ARN=$(aws cloudformation describe-stacks \
 echo "Automation Role ARN: $ROLE_ARN"
 ```
 
-**Step 2: Deploy the two SSM documents directly** (exact minified bytes, each under the 64 KiB SSM limit). The document name is case-sensitive:
+**Step 2: Deploy the two SSM documents directly.** The document name is case-sensitive:
 
 ```bash
 aws ssm create-document \

@@ -36,7 +36,7 @@ aws cloudformation describe-stacks \
     --output text --no-cli-pager
 ```
 
-The template is ~5.5 KB, well under CloudFormation's 51,200-byte inline `--template-body` limit, so no S3 staging is needed.
+The template is small, so it deploys inline with `--template-body` and no S3 staging is needed.
 
 ## Option B: Manual (PowerShell)
 
