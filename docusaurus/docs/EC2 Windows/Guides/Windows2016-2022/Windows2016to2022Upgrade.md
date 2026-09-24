@@ -72,7 +72,7 @@ Chinese (Traditional), Czech, Dutch, English, French, German, Hungarian, Italian
 
 **Step 1: Deploy the IAM roles stack.** The template is small, so it deploys inline with `--template-body` (no S3 staging needed).
 
-**AWS CLI (Mac/Linux):**
+**AWS CLI (macOS/Linux/CloudShell):**
 
 ```bash
 aws cloudformation create-stack \
@@ -92,7 +92,7 @@ ROLE_ARN=$(aws cloudformation describe-stacks \
 echo "Automation Role ARN: $ROLE_ARN"
 ```
 
-**PowerShell (Windows/CloudShell):**
+**PowerShell (Windows):**
 
 ```powershell
 aws cloudformation create-stack `
@@ -114,7 +114,7 @@ Write-Output "Automation Role ARN: $RoleArn"
 
 **Step 2: Deploy the two SSM documents directly.** The document name is case-sensitive.
 
-**AWS CLI (Mac/Linux):**
+**AWS CLI (macOS/Linux/CloudShell):**
 
 ```bash
 aws ssm create-document \
@@ -130,7 +130,7 @@ aws ssm create-document \
     --no-cli-pager
 ```
 
-**PowerShell (Windows/CloudShell):**
+**PowerShell (Windows):**
 
 ```powershell
 aws ssm create-document `
@@ -148,7 +148,7 @@ aws ssm create-document `
 
 **Cleanup after all upgrades are complete** (remove documents first, then the roles stack):
 
-**AWS CLI (Mac/Linux):**
+**AWS CLI (macOS/Linux/CloudShell):**
 
 ```bash
 aws ssm delete-document --name 'Windows-2016-to-2022-Upgrade' --no-cli-pager
@@ -156,7 +156,7 @@ aws ssm delete-document --name 'Windows-2016-to-2022-PreCheck' --no-cli-pager
 aws cloudformation delete-stack --stack-name Windows2016to2022Upgrade --no-cli-pager
 ```
 
-**PowerShell (Windows/CloudShell):**
+**PowerShell (Windows):**
 
 ```powershell
 aws ssm delete-document --name 'Windows-2016-to-2022-Upgrade' --no-cli-pager
@@ -177,7 +177,7 @@ The automation requires two IAM roles:
 1. **Automation Service Role** (WindowsUpgradeAutomationRole): assumed by SSM Automation to orchestrate the upgrade (calls EC2, SSM, IAM, and SNS APIs on your behalf).
 2. **Instance Role** (WindowsUpgradeInstanceRole + WindowsUpgradeInstanceProfile): temporarily attached to instances that don't have SSM permissions. The automation attaches it before the upgrade and removes it afterward. If your instances already have an instance profile with `AmazonSSMManagedInstanceCore`, this role is not used.
 
-**AWS CLI (Mac/Linux):**
+**AWS CLI (macOS/Linux/CloudShell):**
 
 Replace `YOUR_ACCOUNT_ID` with your AWS account ID.
 
@@ -296,7 +296,7 @@ aws iam add-role-to-instance-profile \
     --no-cli-pager
 ```
 
-**PowerShell (Windows/CloudShell):**
+**PowerShell (Windows):**
 
 ```powershell
 # --- 1. Automation Service Role ---
@@ -415,7 +415,7 @@ Download the SSM documents:
 
 Upload to CloudShell and run:
 
-**AWS CLI (Mac/Linux):**
+**AWS CLI (macOS/Linux/CloudShell):**
 
 > **Important:** The document name is case-sensitive. The upgrade automation references `Windows-2016-to-2022-PreCheck` (capital P, capital C). Make sure the `--name` parameter matches exactly.
 
@@ -433,7 +433,7 @@ aws ssm create-document \
     --content file://Windows-2016-to-2022-Upgrade.json
 ```
 
-**PowerShell (Windows/CloudShell):**
+**PowerShell (Windows):**
 
 ```powershell
 New-SSMDocument -Name 'Windows-2016-to-2022-PreCheck' `
@@ -449,7 +449,7 @@ See the [SSM Automation User Guide](https://docs.aws.amazon.com/systems-manager/
 
 ## Run PreCheck or Start Upgrade
 
-**AWS CLI (Mac/Linux):**
+**AWS CLI (macOS/Linux/CloudShell):**
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -466,7 +466,7 @@ echo "Execution ID: $EXEC_ID"
 # Add \"DryRun\": [\"true\"] to the parameters to run pre-flight checks only
 ```
 
-**PowerShell (Windows/CloudShell):**
+**PowerShell (Windows):**
 
 ```powershell
 # Run from CloudShell (region auto-detected)
@@ -509,7 +509,7 @@ You can also run it from the web console instead of CloudShell:
 
 ### List All Running Upgrades
 
-**AWS CLI (Mac/Linux):**
+**AWS CLI (macOS/Linux/CloudShell):**
 
 ```bash
 aws ssm describe-automation-executions \
@@ -529,7 +529,7 @@ aws ssm get-automation-execution \
     --output table
 ```
 
-**PowerShell (Windows/CloudShell):**
+**PowerShell (Windows):**
 
 ```powershell
 Get-SSMAutomationExecutionList -Filter @{
@@ -553,7 +553,7 @@ Get-SSMAutomationExecutionList -Filter @{
 
 ### View Step-by-Step Progress
 
-**PowerShell (Windows/CloudShell):**
+**PowerShell (Windows):**
 
 ```powershell
 $ExecId = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
@@ -645,7 +645,7 @@ If `AutoRollback=false` (default), the automation fails and leaves the instance 
 
 If automatic rollback is disabled or fails:
 
-**AWS CLI (Mac/Linux):**
+**AWS CLI (macOS/Linux/CloudShell):**
 
 ```bash
 INSTANCE_ID='i-0123456789abcdef0'
@@ -670,7 +670,7 @@ aws ec2 create-replace-root-volume-task \
     --delete-replaced-root-volume
 ```
 
-**PowerShell (Windows/CloudShell):**
+**PowerShell (Windows):**
 
 ```powershell
 # Run from CloudShell (region auto-detected)
