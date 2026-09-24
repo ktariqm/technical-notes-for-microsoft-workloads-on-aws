@@ -70,7 +70,9 @@ Chinese (Traditional), Czech, Dutch, English, French, German, Hungarian, Italian
 
 **Architecture note:** Deploy the IAM roles with the CloudFormation template, then deploy the two SSM documents directly with `aws ssm create-document`. The documents cannot be embedded in the CloudFormation template: CloudFormation re-serializes the inline document content, which pushes the upgrade document past the 64 KiB SSM document limit and fails with `Invalid request provided: 64 KiB`.
 
-**Step 1: Deploy the IAM roles stack.** The template is small, so it deploys inline with `--template-body` (no S3 staging needed):
+**Step 1: Deploy the IAM roles stack.** The template is small, so it deploys inline with `--template-body` (no S3 staging needed).
+
+**AWS CLI (Mac/Linux):**
 
 ```bash
 aws cloudformation create-stack \
@@ -90,7 +92,29 @@ ROLE_ARN=$(aws cloudformation describe-stacks \
 echo "Automation Role ARN: $ROLE_ARN"
 ```
 
-**Step 2: Deploy the two SSM documents directly.** The document name is case-sensitive:
+**PowerShell (Windows/CloudShell):**
+
+```powershell
+aws cloudformation create-stack `
+    --stack-name Windows2016to2022Upgrade `
+    --template-body file://windows-2016-to-2022-roles-cfn.json `
+    --capabilities CAPABILITY_NAMED_IAM `
+    --no-cli-pager
+
+aws cloudformation wait stack-create-complete `
+    --stack-name Windows2016to2022Upgrade --no-cli-pager
+
+$RoleArn = aws cloudformation describe-stacks `
+    --stack-name Windows2016to2022Upgrade `
+    --query 'Stacks[0].Outputs[?OutputKey==`AutomationRoleArn`].OutputValue' `
+    --output text --no-cli-pager
+
+Write-Output "Automation Role ARN: $RoleArn"
+```
+
+**Step 2: Deploy the two SSM documents directly.** The document name is case-sensitive.
+
+**AWS CLI (Mac/Linux):**
 
 ```bash
 aws ssm create-document \
@@ -106,9 +130,35 @@ aws ssm create-document \
     --no-cli-pager
 ```
 
+**PowerShell (Windows/CloudShell):**
+
+```powershell
+aws ssm create-document `
+    --name 'Windows-2016-to-2022-PreCheck' `
+    --document-type 'Automation' --document-format 'JSON' `
+    --content file://windows-2016-to-2022-precheck.json `
+    --no-cli-pager
+
+aws ssm create-document `
+    --name 'Windows-2016-to-2022-Upgrade' `
+    --document-type 'Automation' --document-format 'JSON' `
+    --content file://Windows-2016-to-2022-Upgrade.json `
+    --no-cli-pager
+```
+
 **Cleanup after all upgrades are complete** (remove documents first, then the roles stack):
 
+**AWS CLI (Mac/Linux):**
+
 ```bash
+aws ssm delete-document --name 'Windows-2016-to-2022-Upgrade' --no-cli-pager
+aws ssm delete-document --name 'Windows-2016-to-2022-PreCheck' --no-cli-pager
+aws cloudformation delete-stack --stack-name Windows2016to2022Upgrade --no-cli-pager
+```
+
+**PowerShell (Windows/CloudShell):**
+
+```powershell
 aws ssm delete-document --name 'Windows-2016-to-2022-Upgrade' --no-cli-pager
 aws ssm delete-document --name 'Windows-2016-to-2022-PreCheck' --no-cli-pager
 aws cloudformation delete-stack --stack-name Windows2016to2022Upgrade --no-cli-pager

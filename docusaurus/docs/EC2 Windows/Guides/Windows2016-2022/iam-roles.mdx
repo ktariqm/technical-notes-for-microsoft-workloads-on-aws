@@ -38,11 +38,152 @@ aws cloudformation describe-stacks \
 
 The template is small, so it deploys inline with `--template-body` and no S3 staging is needed.
 
-## Option B: Manual (PowerShell)
+## Option B: Manual
 
-If you prefer not to use CloudFormation, create the roles by hand. Open CloudShell and run `pwsh`. Replace `YOUR_ACCOUNT_ID` with your AWS account ID.
+If you prefer not to use CloudFormation, create the roles by hand. Pick the shell that matches your workstation: **AWS CLI** (macOS, Linux, or CloudShell) or **PowerShell** (Windows or CloudShell `pwsh`). Both produce identical roles.
 
-### 1. Automation Service Role
+### AWS CLI (macOS, Linux, CloudShell)
+
+#### 1. Automation Service Role
+
+- **Trust:** `ssm.amazonaws.com`
+- **Permissions:** EC2 (instances, volumes, images, snapshots, Replace Root Volume), SSM (commands, automation), IAM (instance profiles), SNS
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --no-cli-pager)
+
+# Create the role with its trust policy
+aws iam create-role \
+    --role-name WindowsUpgradeAutomationRole \
+    --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ssm.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+    --no-cli-pager
+
+# Write the permissions policy (ACCOUNT_ID is substituted into the PassRole ARNs)
+cat > /tmp/windows-upgrade-automation-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EC2Actions",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeInstanceAttribute",
+        "ec2:StopInstances",
+        "ec2:StartInstances",
+        "ec2:RebootInstances",
+        "ec2:CreateImage",
+        "ec2:DescribeImages",
+        "ec2:CreateVolume",
+        "ec2:AttachVolume",
+        "ec2:DetachVolume",
+        "ec2:DeleteVolume",
+        "ec2:DescribeVolumes",
+        "ec2:ModifyVolume",
+        "ec2:DescribeVolumesModifications",
+        "ec2:DescribeSnapshots",
+        "ec2:CreateTags",
+        "ec2:DescribeTags",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeAddresses",
+        "ec2:CreateReplaceRootVolumeTask",
+        "ec2:DescribeReplaceRootVolumeTasks",
+        "ec2:EnableImageDeprecation",
+        "autoscaling:DescribeAutoScalingInstances"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SSMActions",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:SendCommand",
+        "ssm:GetCommandInvocation",
+        "ssm:DescribeInstanceInformation",
+        "ssm:GetDocument",
+        "ssm:ListCommands",
+        "ssm:ListCommandInvocations",
+        "ssm:StartAutomationExecution",
+        "ssm:GetAutomationExecution",
+        "ssm:DescribeAutomationExecutions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMActions",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetInstanceProfile",
+        "iam:ListInstanceProfiles",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "ec2:DescribeIamInstanceProfileAssociations",
+        "ec2:AssociateIamInstanceProfile",
+        "ec2:DisassociateIamInstanceProfile"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PassRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::${ACCOUNT_ID}:role/WindowsUpgradeInstanceRole",
+        "arn:aws:iam::${ACCOUNT_ID}:role/WindowsUpgradeAutomationRole"
+      ]
+    },
+    {
+      "Sid": "SNSNotification",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy \
+    --role-name WindowsUpgradeAutomationRole \
+    --policy-name WindowsUpgradeAutomationPolicy \
+    --policy-document file:///tmp/windows-upgrade-automation-policy.json \
+    --no-cli-pager
+```
+
+#### 2. Instance Role
+
+- **Trust:** `ec2.amazonaws.com`
+- **Managed Policy:** `AmazonSSMManagedInstanceCore`
+
+```bash
+aws iam create-role \
+    --role-name WindowsUpgradeInstanceRole \
+    --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+    --no-cli-pager
+
+aws iam attach-role-policy \
+    --role-name WindowsUpgradeInstanceRole \
+    --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore \
+    --no-cli-pager
+
+aws iam create-instance-profile \
+    --instance-profile-name WindowsUpgradeInstanceProfile \
+    --no-cli-pager
+
+aws iam add-role-to-instance-profile \
+    --instance-profile-name WindowsUpgradeInstanceProfile \
+    --role-name WindowsUpgradeInstanceRole \
+    --no-cli-pager
+```
+
+### PowerShell (Windows, CloudShell `pwsh`)
+
+Replace `YOUR_ACCOUNT_ID` with your AWS account ID.
+
+#### 1. Automation Service Role
 
 - **Trust:** `ssm.amazonaws.com`
 - **Permissions:** EC2 (instances, volumes, images, snapshots, Replace Root Volume), SSM (commands, automation), IAM (instance profiles), SNS
@@ -150,7 +291,7 @@ Register-IAMRolePolicy `
     -PolicyArn (New-IAMPolicy -PolicyName 'WindowsUpgradeAutomationPolicy' -PolicyDocument $policy).Arn
 ```
 
-### 2. Instance Role
+#### 2. Instance Role
 
 - **Trust:** `ec2.amazonaws.com`
 - **Managed Policy:** `AmazonSSMManagedInstanceCore`
@@ -192,5 +333,5 @@ aws ssm create-document \
     --content file://Windows-2016-to-2022-Upgrade.json --no-cli-pager
 ```
 
-Embedding the documents in CloudFormation fails: the inline SSM `Content` exceeds the 64 KiB document limit once CloudFormation re-serializes it. Document names are case-sensitive.
+The documents cannot be embedded in the CloudFormation template: CloudFormation re-serializes the inline SSM `Content`, which pushes the upgrade document past the 64 KiB document limit. Document names are case-sensitive.
 :::
