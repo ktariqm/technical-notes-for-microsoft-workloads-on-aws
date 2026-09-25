@@ -180,7 +180,7 @@ The automation requires two IAM roles:
 
 **AWS CLI (macOS/Linux/CloudShell):**
 
-Replace `YOUR_ACCOUNT_ID` with your AWS account ID.
+Run these from the `ssm-documents/` directory (it contains `windows-2016-to-2022-automation-policy.json`). The commands substitute your account ID into the policy automatically.
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --no-cli-pager)
@@ -197,72 +197,9 @@ aws iam create-role \
         }]
     }' --no-cli-pager
 
-# Create and attach the scoped policy
-cat > /tmp/windows-upgrade-policy.json << 'POLICY'
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "EC2Actions",
-            "Effect": "Allow",
-            "Action": [
-                "ec2:DescribeInstances", "ec2:DescribeInstanceStatus",
-                "ec2:DescribeInstanceAttribute", "ec2:DescribeInstanceTypes",
-                "ec2:StopInstances", "ec2:StartInstances", "ec2:RebootInstances",
-                "ec2:CreateImage", "ec2:DescribeImages",
-                "ec2:CreateVolume", "ec2:AttachVolume", "ec2:DetachVolume",
-                "ec2:DeleteVolume", "ec2:DescribeVolumes",
-                "ec2:ModifyVolume", "ec2:DescribeVolumesModifications",
-                "ec2:DescribeSnapshots", "ec2:CreateTags", "ec2:DescribeTags",
-                "ec2:DescribeAddresses",
-                "ec2:CreateReplaceRootVolumeTask", "ec2:DescribeReplaceRootVolumeTasks",
-                "ec2:EnableImageDeprecation",
-                "ec2:DescribeIamInstanceProfileAssociations",
-                "ec2:AssociateIamInstanceProfile", "ec2:DisassociateIamInstanceProfile",
-                "autoscaling:DescribeAutoScalingInstances"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Sid": "SSMActions",
-            "Effect": "Allow",
-            "Action": [
-                "ssm:SendCommand", "ssm:GetCommandInvocation",
-                "ssm:DescribeInstanceInformation", "ssm:GetDocument",
-                "ssm:ListCommands", "ssm:ListCommandInvocations",
-                "ssm:StartAutomationExecution", "ssm:GetAutomationExecution",
-                "ssm:DescribeAutomationExecutions"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Sid": "IAMActions",
-            "Effect": "Allow",
-            "Action": [
-                "iam:GetInstanceProfile", "iam:ListInstanceProfiles",
-                "iam:ListAttachedRolePolicies", "iam:ListRolePolicies",
-                "iam:GetRolePolicy", "iam:GetPolicy", "iam:GetPolicyVersion"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Sid": "PassRole",
-            "Effect": "Allow",
-            "Action": "iam:PassRole",
-            "Resource": [
-                "arn:aws:iam::*:role/WindowsUpgradeInstanceRole",
-                "arn:aws:iam::*:role/WindowsUpgradeAutomationRole"
-            ]
-        },
-        {
-            "Sid": "SNSNotification",
-            "Effect": "Allow",
-            "Action": "sns:Publish",
-            "Resource": "*"
-        }
-    ]
-}
-POLICY
+# Substitute your account ID into the scoped policy, then attach it
+sed "s/YOUR_ACCOUNT_ID/${ACCOUNT_ID}/g" \
+    windows-2016-to-2022-automation-policy.json > /tmp/windows-upgrade-policy.json
 
 aws iam put-role-policy \
     --role-name WindowsUpgradeAutomationRole \
@@ -299,6 +236,8 @@ aws iam add-role-to-instance-profile \
 
 **PowerShell (Windows):**
 
+Run these from the `ssm-documents/` directory (it contains `windows-2016-to-2022-automation-policy.json`). The commands substitute your account ID into the policy automatically.
+
 ```powershell
 # --- 1. Automation Service Role ---
 New-IAMRole `
@@ -312,71 +251,8 @@ New-IAMRole `
         }]
     }'
 
-$policy = @'
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "EC2Actions",
-            "Effect": "Allow",
-            "Action": [
-                "ec2:DescribeInstances", "ec2:DescribeInstanceStatus",
-                "ec2:DescribeInstanceAttribute", "ec2:DescribeInstanceTypes",
-                "ec2:StopInstances", "ec2:StartInstances", "ec2:RebootInstances",
-                "ec2:CreateImage", "ec2:DescribeImages",
-                "ec2:CreateVolume", "ec2:AttachVolume", "ec2:DetachVolume",
-                "ec2:DeleteVolume", "ec2:DescribeVolumes",
-                "ec2:ModifyVolume", "ec2:DescribeVolumesModifications",
-                "ec2:DescribeSnapshots", "ec2:CreateTags", "ec2:DescribeTags",
-                "ec2:DescribeAddresses",
-                "ec2:CreateReplaceRootVolumeTask", "ec2:DescribeReplaceRootVolumeTasks",
-                "ec2:EnableImageDeprecation",
-                "ec2:DescribeIamInstanceProfileAssociations",
-                "ec2:AssociateIamInstanceProfile", "ec2:DisassociateIamInstanceProfile",
-                "autoscaling:DescribeAutoScalingInstances"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Sid": "SSMActions",
-            "Effect": "Allow",
-            "Action": [
-                "ssm:SendCommand", "ssm:GetCommandInvocation",
-                "ssm:DescribeInstanceInformation", "ssm:GetDocument",
-                "ssm:ListCommands", "ssm:ListCommandInvocations",
-                "ssm:StartAutomationExecution", "ssm:GetAutomationExecution",
-                "ssm:DescribeAutomationExecutions"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Sid": "IAMActions",
-            "Effect": "Allow",
-            "Action": [
-                "iam:GetInstanceProfile", "iam:ListInstanceProfiles",
-                "iam:ListAttachedRolePolicies", "iam:ListRolePolicies",
-                "iam:GetRolePolicy", "iam:GetPolicy", "iam:GetPolicyVersion"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Sid": "PassRole",
-            "Effect": "Allow",
-            "Action": "iam:PassRole",
-            "Resource": [
-                "arn:aws:iam::*:role/WindowsUpgradeInstanceRole",
-                "arn:aws:iam::*:role/WindowsUpgradeAutomationRole"
-            ]
-        },
-        {
-            "Sid": "SNSNotification",
-            "Effect": "Allow",
-            "Action": "sns:Publish",
-            "Resource": "*"
-        }
-    ]
-}
-'@
+$AccountId = (Get-STSCallerIdentity).Account
+$policy = (Get-Content windows-2016-to-2022-automation-policy.json -Raw).Replace('YOUR_ACCOUNT_ID', $AccountId)
 
 Write-IAMRolePolicy `
     -RoleName 'WindowsUpgradeAutomationRole' `
@@ -409,10 +285,11 @@ Add-IAMRoleToInstanceProfile `
 
 #### 2. Deploy SSM Automation Documents
 
-Download the SSM documents:
+Download the SSM documents (and, if you used the manual role setup above, the policy file):
 
 - `Windows-2016-to-2022-Upgrade.json`
 - `windows-2016-to-2022-precheck.json`
+- `windows-2016-to-2022-automation-policy.json` (only for Option B manual role setup)
 
 Upload to CloudShell and run:
 
@@ -423,27 +300,31 @@ Upload to CloudShell and run:
 ```bash
 aws ssm create-document \
     --name 'Windows-2016-to-2022-PreCheck' \
-    --document-type 'Automation' \
-    --document-format 'JSON' \
-    --content file://windows-2016-to-2022-precheck.json
+    --document-type 'Automation' --document-format 'JSON' \
+    --content file://windows-2016-to-2022-precheck.json \
+    --no-cli-pager
 
 aws ssm create-document \
     --name 'Windows-2016-to-2022-Upgrade' \
-    --document-type 'Automation' \
-    --document-format 'JSON' \
-    --content file://Windows-2016-to-2022-Upgrade.json
+    --document-type 'Automation' --document-format 'JSON' \
+    --content file://Windows-2016-to-2022-Upgrade.json \
+    --no-cli-pager
 ```
 
 **PowerShell (Windows):**
 
 ```powershell
-New-SSMDocument -Name 'Windows-2016-to-2022-PreCheck' `
-    -DocumentType 'Automation' -DocumentFormat 'JSON' `
-    -Content (Get-Content -Raw windows-2016-to-2022-precheck.json)
+aws ssm create-document `
+    --name 'Windows-2016-to-2022-PreCheck' `
+    --document-type 'Automation' --document-format 'JSON' `
+    --content file://windows-2016-to-2022-precheck.json `
+    --no-cli-pager
 
-New-SSMDocument -Name 'Windows-2016-to-2022-Upgrade' `
-    -DocumentType 'Automation' -DocumentFormat 'JSON' `
-    -Content (Get-Content -Raw Windows-2016-to-2022-Upgrade.json)
+aws ssm create-document `
+    --name 'Windows-2016-to-2022-Upgrade' `
+    --document-type 'Automation' --document-format 'JSON' `
+    --content file://Windows-2016-to-2022-Upgrade.json `
+    --no-cli-pager
 ```
 
 See the [SSM Automation User Guide](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-automation.html) for more on creating and managing automation documents.
@@ -516,7 +397,7 @@ You can also run it from the web console instead of CloudShell:
 aws ssm describe-automation-executions \
     --filters "Key=DocumentNamePrefix,Values=Windows-2016-to-2022-Upgrade" \
     --query "AutomationExecutionMetadataList[?AutomationExecutionStatus=='InProgress' || AutomationExecutionStatus=='Success' || AutomationExecutionStatus=='Failed' || AutomationExecutionStatus=='TimedOut'].{ExecId:AutomationExecutionId,Status:AutomationExecutionStatus,Step:CurrentStepName}" \
-    --output table
+    --output table --no-cli-pager
 ```
 
 **PowerShell (Windows):**
@@ -551,7 +432,7 @@ Uses `$EXEC_ID` from the start command above:
 aws ssm get-automation-execution \
     --automation-execution-id "$EXEC_ID" \
     --query "AutomationExecution.StepExecutions[?StepStatus!='Pending'].{Step:StepName,Status:StepStatus}" \
-    --output table
+    --output table --no-cli-pager
 ```
 
 **PowerShell (Windows):**
@@ -656,19 +537,21 @@ EXEC_ID='xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 AMI_ID=$(aws ssm get-automation-execution \
     --automation-execution-id "$EXEC_ID" \
     --query "AutomationExecution.Outputs.\"CreateBackupImage.BackupImageId\"[0]" \
-    --output text)
+    --output text --no-cli-pager)
 
-# Get the snapshot ID from the AMI
+# Get the snapshot ID from the AMI (required if the root volume was expanded during upgrade)
 SNAPSHOT_ID=$(aws ec2 describe-images \
     --image-ids "$AMI_ID" \
     --query "Images[0].BlockDeviceMappings[?DeviceName=='/dev/sda1'].Ebs.SnapshotId" \
-    --output text)
+    --output text --no-cli-pager)
 
 # Replace root volume from snapshot
 aws ec2 create-replace-root-volume-task \
     --instance-id "$INSTANCE_ID" \
     --snapshot-id "$SNAPSHOT_ID" \
-    --delete-replaced-root-volume
+    --volume-initialization-rate 300 \
+    --delete-replaced-root-volume \
+    --no-cli-pager
 ```
 
 **PowerShell (Windows):**
